@@ -352,6 +352,17 @@ if [ -f "${SSH_CONFIG}" ]; then
   fi
 fi
 
+echo " (>) Scanning for unauthorized SSH authorized_keys files..."
+find /home /root -name "authorized_keys" | while read -r keyfile; do
+    echo " [!] Found SSH Authorized Key file: $keyfile"
+    cat "$keyfile"
+    # Backup and clear the file to prevent backdoor entry
+    cp "$keyfile" "${keyfile}.bak"
+    > "$keyfile"
+    chmod 600 "$keyfile"
+    echo "     - Cleared contents of $keyfile (backup saved as .bak)"
+done
+
 # --- 10. FAIL2BAN ---
 echo ""
 echo "--- SECTION 10: FAIL2BAN ---"
@@ -399,6 +410,13 @@ echo "deny = 5" > /etc/security/faillock.conf
 echo "unlock_time = 900" >> /etc/security/faillock.conf
 echo "silent" >> /etc/security/faillock.conf
 echo "audit" >> /etc/security/faillock.conf
+
+echo " (>) Enforcing password expiration rules on all existing human users..."
+for user in $(awk -F: '($3 >= 1000 && $3 < 60000) {print $1}' /etc/passwd); do
+    # Force max password age 90 days, min age 7 days, warning 14 days
+    chage -M 90 -m 7 -W 14 "$user"
+    echo "     - Password aging updated for user: $user"
+done
 
 # FIXED: Removed the sed line that corrupted /etc/pam.d/common-auth
 pam-auth-update --enable pwquality faillock || true
@@ -468,6 +486,19 @@ if [ -d /etc/lightdm ]; then
     echo "[Seat:*]" > /etc/lightdm/lightdm.conf.d/99-cyberpatriot-hardening.conf
     echo "allow-guest=false" >> /etc/lightdm/lightdm.conf.d/99-cyberpatriot-hardening.conf
     echo "greeter-hide-users=true" >> /etc/lightdm/lightdm.conf.d/99-cyberpatriot-hardening.conf
+fi
+
+echo " (>) Disabling Auto-Login across GDM3 and LightDM..."
+
+# GDM3 (Ubuntu Default)
+if [ -f /etc/gdm3/custom.conf ]; then
+    sed -i 's/AutomaticLoginEnable=true/AutomaticLoginEnable=false/' /etc/gdm3/custom.conf
+    sed -i 's/^AutomaticLogin=/#AutomaticLogin=/' /etc/gdm3/custom.conf
+fi
+
+# LightDM (Linux Mint / XFCE)
+if [ -d /etc/lightdm ]; then
+    find /etc/lightdm/ -type f -exec sed -i 's/^autologin-user=.*/#autologin-user=/' {} +
 fi
 
 # --- SECTION 12.1: SECURE CINNAMON DESKTOP (MINT) ---
@@ -540,6 +571,13 @@ add_or_update_sysctl "net.ipv4.tcp_syn_retries" "5"
 
 echo " (>) Applying sysctl changes..."
 sysctl -p /etc/sysctl.conf || true
+
+if [ -f /etc/systemd/coredump.conf ]; then
+    echo " (>) Disabling systemd core dumps..."
+    sed -i 's/^#\?Storage=.*/Storage=none/' /etc/systemd/coredump.conf
+    sed -i 's/^#\?ProcessSizeMax=.*/ProcessSizeMax=0/' /etc/systemd/coredump.conf
+    systemctl reload systemd-coredump 2>/dev/null || true
+fi
 
 # --- 14. SECURE SHARED MEMORY ---
 if ! grep -q "tmpfs /dev/shm" /etc/fstab; then
@@ -636,6 +674,9 @@ grep -r "NOPASSWD" /etc/sudoers.d/ | while read -r line; do
     echo "     - Commented out NOPASSWD in $file"
 done
 
+echo " (>) Removing world-writable permissions on files in /home..."
+find /home -type f -perm -0002 -exec chmod o-w {} + 2>/dev/null
+
 # --- 16. MEDIA & HACKING FILES ---
 echo ""
 echo "--- SECTION 16: PROHIBITED FILES ---"
@@ -644,6 +685,9 @@ find /home -type f \( -name "*.mp3" -o -name "*.mp4" -o -name "*.avi" \) -print
 
 echo " (i) Searching for hacking tools..."
 find /home -type f \( -name "*.pcap" -o -name "john" -o -name "hydra" \) -print
+
+echo " (>) Checking for files with no valid owner or group..."
+find /home /tmp /var/tmp \( -nouser -o -nogroup \) -exec ls -l {} + 2>/dev/null
 
 # --- 17. FINAL CLEANUP ---
 echo ""
