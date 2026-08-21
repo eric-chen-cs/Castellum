@@ -14,4 +14,4 @@ Run "sudo bash ubuntu.sh" to start the script.
 Find practice images here: 
 https://docs.google.com/spreadsheets/d/1cdVHtk4w5JDJCYy-EO2_ycr0ZqMgUyjFOVDn5Y8eGVw/edit?gid=735920429#gid=735920429
 
-feel free to contact me at ec2247@cornell.edu for any questions or concerns
+Feel free to contact me at ec2247@cornell.edu for any questions or concerns
